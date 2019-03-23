@@ -1,0 +1,82 @@
+#9
+#a)
+library(readr)
+college = read.csv("~/Downloads/College.csv")
+college = college[,-1]
+
+set.seed(11)
+size = dim(college)[1]/2
+train = sample(1:dim(college)[1], size)
+test = -train
+train = college[train, ]
+test = college[test, ]
+
+# b)
+least_square_fit = lm(Apps~., data = train)
+least_square_fit
+least_square_pred = predict(least_square_fit, test)
+mean((test[,2] - least_square_pred)^2)
+# test error is 1538442
+
+#c)
+install.packages('glmnet')
+library(glmnet)
+
+train_matrix = model.matrix(Apps~., data=train)
+test_matrix = model.matrix(Apps~., data=test)
+grid = 10 ^ seq(4, -2, length=100)
+mod_ridge = cv.glmnet(train_matrix, train[, 2], alpha=0, lambda=grid, thresh=1e-12)
+mod_ridge 
+lambda_best_ridge = mod_ridge$lambda.min
+lambda_best_ridge
+
+
+
+ridge_predict = predict(mod_ridge, newx=test_matrix, s=lambda_best_ridge)
+mean((test[, 2] - ridge_predict)^2)
+# Test RSS is 1619753
+predict(mod_ridge, s=lambda_best_ridge, type="coefficients")
+
+
+#d)
+mod_lasso = cv.glmnet(train_matrix, train[, 2], alpha=1, lambda=grid, thresh=1e-12)
+lambda_best_lasso = mod_lasso$lambda.min
+lambda_best_lasso
+
+lasso_predict = predict(mod_lasso, newx=test_matrix, s=lambda_best_lasso)
+mean((test[, 2] - lasso_predict)^2)
+# Test RSS is around 1632238
+mod_lasso1 = glmnet(model.matrix(Apps~., data=college), college[, 2], alpha=1)
+predict(mod_lasso1, s=lambda_best_lasso, type="coefficients")
+# F.undergrad and Books were shrunk to 0
+
+#e)
+install.packages('pls')
+library(pls)
+pcr_fit = pcr(Apps~., data=train, scale=T, validation="CV")
+validationplot(pcr_fit, val.type="MSEP")
+
+pcr_predict = predict(pcr_fit, test, ncomp=10)
+mean((test[, 2] - data.frame(pcr_predict))^2)
+# Test RSS for pcr is 3014496
+
+#f)
+pls_fit = plsr(Apps~., data=train, scale=T, validation="CV")
+validationplot(pls_fit, val.type="MSEP")
+
+pls_predict = predict(pls_fit, test, ncomp=10)
+mean((test[, "Apps"] - data.frame(pls_predict))^2)
+# Test RSS for PLS is about  1508987
+
+#g)
+test_avg = mean(test[, 2])
+ols_test = 1 - mean((test[, 2] - least_square_pred)^2) /mean((test[, 2] - test_avg)^2)
+ridge_test = 1 - mean((test[, 2] - ridge_predict)^2) /mean((test[, 2] - test_avg)^2)
+lasso_test = 1 - mean((test[, 2] - lasso_predict)^2) /mean((test[, 2] - test_avg)^2)
+pcr_test = 1 - mean((test[, 2] - data.frame(pcr_predict))^2) /mean((test[, 2] - test_avg)^2)
+pls_test = 1 - mean((test[, 2] - data.frame(pls_predict))^2) /mean((test[, 2] - test_avg)^2)
+barplot(c(ols_test, ridge_test, lasso_test, pcr_test, pls_test), col="green", names.arg=c("OLS", "Ridge", "Lasso", "PCR", "PLS"), main="Test R-squared")
+# Results for OLS, Lasso, and Ridge are similar. For Lasso F.undergrad and Books were shrunk to 0.
+# All models have an R^2 around 0.9 except for PCR which is lower than 0.8. All models except PCR predict college applications with high accuracy
+
+#############################################################################
