@@ -1,0 +1,122 @@
+install.packages('caret')
+library(readr)
+library(caret)
+library(randomForest)
+
+data(GermanCredit)
+str(GermanCredit)
+
+College = read.csv("~/Downloads/College.csv")
+College = College[,-1]
+str(College)
+
+#Split data
+inTrain <- createDataPartition(GermanCredit$Class, p = 3/4, list = FALSE)
+trainDescr <- GermanCredit[inTrain,]
+testDescr  <- GermanCredit[-inTrain,]
+trainClass <- GermanCredit$Class[inTrain]
+testClass  <- GermanCredit$Class[-inTrain]
+
+train.num = trainDescr
+train.num$Class = as.numeric(train.num$Class)
+test.num = testDescr
+test.num$Class = as.numeric(test.num$Class)
+
+prop.table(table(GermanCredit$Class))
+prop.table(table(trainClass))
+
+tr <- createDataPartition(College$Apps, p = 3/4, list = FALSE)
+train.college <- College[tr,]
+test.college  <- College[tr,]
+train.apps <- College$Apps[tr]
+test.apps  <- College$Apps[-tr]
+
+college.num.train = train.college
+college.num.train$Private = as.numeric(college.num.train$Private)
+college.num.test = test.college
+college.num.test$Private = as.numeric(college.num.test$Private)
+
+##############################Multi Collinearity#######################################
+ncol(college.num.train)
+descrCorr <- cor(college.num.train)
+highCorr <- findCorrelation(descrCorr, 0.90)
+college.num.train <- college.num.train[, -highCorr]
+college.num.train$Apps = train.college$Apps
+college.num.test  <-  college.num.test[, -highCorr]
+college.num.test$Apps = test.college$Apps
+ncol(college.num.train)
+
+# Algorithm deleted all variables when used with classification data set
+################## preProcess ####################################
+xTrans <- preProcess(college.num.train, method = c("center", "scale"))
+scaled.train = predict(xTrans, college.num.train)
+scaled.test = predict(xTrans, college.num.test)
+
+##############################REGRESSION#######################################
+# Multiple Linear Regression 
+lm.model = lm(Apps ~., data = college.num.train)
+lm.model.pred = predict(lm.model, college.num.test)
+mean((test.college$Apps - lm.model.pred)^2)
+
+
+# PCR
+rctrl1 <- trainControl(method = "cv", number = 3, returnResamp = "all")
+set.seed(849)
+test_reg_cv_form <- train(Apps ~ ., data = train.college, 
+                          method = "pcr", trControl = rctrl1,
+                          preProc = c("center", "scale"),na.action=na.exclude)
+test_reg_pred_form <- predict(test_reg_cv_form, test.college)
+mean((test.college$Apps- test_reg_pred_form)^2)
+
+# LASSO Regression
+lassoFit <- train(train.college[,-1], train.apps, method = "lasso", trControl = rctrl1,
+                  preProc = c("center", "scale"))
+test_lasso_pred <- predict(lassoFit, test.college)
+mean((test.college$Apps- test_lasso_pred)^2)
+
+# Ridge Regression
+ridgeFit = train(train.college[,-1], train.apps, method='ridge',lambda = 4, preProcess=c('scale', 'center'))
+test_ridge_pred <- predict(ridgeFit, test.college)
+mean((test.college$Apps- test_ridge_pred)^2)
+
+
+##############################CLASSIFICATIONS#######################################
+# Random Forest
+
+control <- trainControl(method="repeatedcv", number=10, repeats=3, search="random")
+set.seed(420)
+mtry <- sqrt(ncol(trainDescr))
+metric <- "Accuracy"
+rf_random <- train(Class~., data=trainDescr, method="rf", metric=metric, tuneLength=15, trControl=control)
+print(rf_random)
+plot(rf_random)
+# 11 is the most accurate
+
+tunegrid <- expand.grid(.mtry=c(1:15))
+rf_gridsearch <- train(Class~., data=trainDescr, method="rf", metric=metric, tuneGrid=tunegrid, trControl=control)
+print(rf_gridsearch)
+plot(rf_gridsearch)
+# 5 is the most accurate
+
+German.RF = randomForest(Class ~ ., data = trainDescr, mtry = 5, ntree = 500, importance = TRUE)
+pred.german.rf = predict(German.RF, testDescr)
+confusionMatrix(testClass, pred.german.rf)
+table(testClass, pred.german.rf)
+
+######## LDA ###############
+nearZeroVar(trainDescr)
+train.num = trainDescr[,-nearZeroVar(trainDescr)]
+lda.fit<- train(Class~. , method='lda', preProcess=c('scale', 'center'), data=train.num)
+confusionMatrix(testClass, predict(lda.fit, testDescr))
+table(testClass, predict(lda.fit, testDescr))
+
+####### Logistic Regression ############
+ctrl <- trainControl(method = "repeatedcv", number = 10, savePredictions = TRUE)
+
+mod_fit <- train(Class ~ .,  data=trainDescr, method="glm", family="binomial",
+                 trControl = ctrl, tuneLength = 5)
+
+pred = predict(mod_fit, testDescr)
+confusionMatrix(pred, testClass)
+table(data=pred, testClass)
+
