@@ -1,0 +1,137 @@
+# Libraries
+install.packages('fracdiff')
+install.packages('tseries')
+install.packages('forecast')
+install.packages('rugarch')
+install.packages('xts')
+install.packages('uroot')
+install.packages('aTSA')
+install.packages('pracma')
+install.packages('fGarch')
+install.packages('plotly')
+install.packages('ggplot2')
+install.packages('TSA')
+library(TSA)
+library(ggplot2)
+library(fracdiff)
+library(forecast)
+library(tseries)
+library(rugarch)
+library(xts)
+library(uroot)
+library(pracma)
+library(fGarch)
+library(astsa)
+library(plotly)
+
+# create data set with only wind speed
+summary(Wind_Speed)
+ws = Wind_Speed[,2]
+
+# Create Time Series
+wind_speed_ts = ts(data = ws) 
+hour_wind_speed_ts = ts(data = ws, frequency = 6)
+plot(wind_speed_ts) # no trend
+plot(hour_wind_speed_ts)
+# since no trend use Additive Decomposition
+
+# Decompose to look for patterns
+plot(decompose(hour_wind_speed_ts)) # seasonality and no trend
+
+# Decompose and Remove Seasonality
+dcmp_hour = decompose(hour_wind_speed_ts, type = 'additive')
+no_seas_hour = hour_wind_speed_ts - dcmp_hour$seasonal
+
+par(mfrow = c(2, 1))
+plot(no_seas_hour)
+plot(hour_wind_speed_ts)
+par(mfrow = c(1, 1))
+
+# train sets
+length(no_seas_hour)
+length(no_seas_hour)/6 # 729.5 hours
+train30_no_seas = window(no_seas_hour, end = c(670,3))
+length(train30_no_seas)
+# With Seasonality
+train30_with_seas = window(hour_wind_speed_ts, end = c(670,3))
+length(train30_with_seas)
+
+# test sets 
+test30_no_seas = window(no_seas_hour, start = c(670,4)) #~4%
+length(test30_no_seas) #180
+#With Seasonality
+test30_with_seas = window(hour_wind_speed_ts, start = c(670,4))
+length(test30_with_seas) 
+
+# Test for stationarity
+adf.test(no_seas_hour, alternative = "stationary") 
+pp.test(no_seas_hour, alternative = "stationary")
+adf.test(train30_no_seas, alternative = "stationary") 
+pp.test(train30_no_seas, alternative = "stationary")
+adf.test(train30_with_seas, alternative = "stationary") 
+pp.test(train30_with_seas, alternative = "stationary") 
+
+# All Time Series are stationary; Diff not necessary
+
+# AutoCorrelation Original
+tsdisplay(no_seas_hour) 
+checkresiduals(no_seas_hour) 
+
+# AutoCorrelation Training sets
+tsdisplay(train30_no_seas) 
+checkresiduals(train30_no_seas) 
+tsdisplay(train30_with_seas) 
+checkresiduals(train30_with_seas)
+
+# very autocorrelated and residuals are not normally dist. for all TS
+
+##########  Rolling Arima that works #############################
+h <- 1
+train <- window(wind_speed_ts,end=4017)
+test <- window(wind_speed_ts,start=4018)
+n <- length(test) - h + 1
+fit <- auto.arima(train)
+fc <- ts(numeric(n), start=4017+h)
+for(i in 1:n)
+{  
+  x <- window(wind_speed_ts, end=4017 + i)
+  refit <- Arima(x, model=fit)
+  fc[i] <- forecast(refit, h=h)$mean[h]
+}
+plot(fc)
+lines(test, col='red', lty=6)
+accuracy(fc, test)
+View(fc)
+View(test)
+
+# Plotting model vs original
+plot(train30_no_seas, lwd=3)
+lines(ets_train30_no_seas$fitted, col='red')
+
+###Rolling ETS####
+g <- 1
+m <- length(test) - g + 1
+fit_ets <- ets(train)
+fc_ets <- ts(numeric(n), start=4017+g)
+for(i in 1:m)
+{  
+  x_ets <- window(wind_speed_ts, end=4017 + i)
+  refit_ets <- ets(x_ets)
+  fc_ets[i] <- forecast(refit_ets, h=g)$mean[g]
+}
+plot(fc_ets)
+lines(test, col='red', lty=6)
+accuracy(fc_ets, test)
+
+#ugarchroll
+roll = ugarchroll(spec, data = hour_wind_speed_ts, n.ahead = 1, n.start = 4017, refit.every = 1, refit.window = "recursive", 
+                  solver = "hybrid", fit.control = list(),
+                  calculate.VaR = TRUE, VaR.alpha = c(0.01, 0.025, 0.05),
+                  keep.coef = TRUE )
+plot(roll)
+plot.ts(roll@forecast[["density"]][["Mu"]])
+dum = ts(test30_with_seas, start = 1)
+lines(dum, col='red')
+accuracy(roll@forecast[["density"]][["Mu"]], test30_with_seas)
+
+############ DONE ####################
