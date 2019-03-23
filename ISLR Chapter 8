@@ -1,0 +1,110 @@
+install.packages('ISLR')
+library(ISLR)
+#8a
+set.seed(1)
+tr = sample(1:nrow(Carseats), nrow(Carseats) / 2)
+train = Carseats[tr, ]
+test = Carseats[-tr, ]
+
+#b
+install.packages('tree')
+library(tree)
+tree.cs = tree(Sales ~ ., data = train)
+summary(tree.cs)
+plot(tree.cs)
+text(tree.cs, pretty = 0)
+pred = predict(tree.cs, test)
+mean((test$Sales - pred)^2)
+
+#c
+cross = cv.tree(tree.cs)
+plot(cross$size, cross$dev, type = "b")
+tree.min = which.min(cross$dev)
+points(tree.min, cross$dev[tree.min], col = "red", cex = 2, pch = 20)
+
+prune = prune.tree(tree.cs, best = 8)
+plot(prune)
+text(prune, pretty = 0)
+
+prune.pred = predict(prune, test)
+mean((test$Sales - prune.pred)^2)
+
+#d
+install.packages('randomForest')
+library(randomForest)
+bag = randomForest(Sales ~ ., data = train, mtry = 10, ntree = 500, importance = TRUE)
+pred.bag = predict(bag, test)
+mean((pred.bag - test$Sales)^2)
+
+importance(bag)
+
+#e
+rf = randomForest(Sales ~ ., data = train, mtry = 5, ntree = 500, importance = T)
+rf.pred = predict(rf, test)
+mean((test$Sales - rf.pred)^2)
+importance(rf)
+
+#10a
+sum(is.na(Hitters$Salary))
+Hitters = Hitters[-which(is.na(Hitters$Salary)), ]
+sum(is.na(Hitters$Salary))
+Hitters$Salary = log(Hitters$Salary)
+
+#10b
+b10 = 1:200 
+Hitters.train = Hitters[b10, ]
+Hitters.test = Hitters[-b10, ]
+
+#c
+install.packages('gbm')
+library(gbm)
+set.seed(1)
+pows = seq(-10, -0.2, by = 0.1)
+lambdas = 10^pows
+train.err = rep(NA, length(lambdas))
+for (i in 1:length(lambdas)) {
+  boost.hitters = gbm(Salary ~ ., data = Hitters.train, distribution = "gaussian", n.trees = 1000, shrinkage = lambdas[i])
+  pred.train = predict(boost.hitters, Hitters.train, n.trees = 1000)
+  train.err[i] = mean((pred.train - Hitters.train$Salary)^2)
+}
+plot(lambdas, train.err, type = "b", xlab = "Shrinkage values", ylab = "Training MSE")
+
+#d
+set.seed(1)
+test.err = rep(NA, length(lambdas))
+for (i in 1:length(lambdas)) {
+  boost.hitters = gbm(Salary ~ ., data = Hitters.train, distribution = "gaussian", n.trees = 1000, shrinkage = lambdas[i])
+  yhat = predict(boost.hitters, Hitters.test, n.trees = 1000)
+  test.err[i] = mean((yhat - Hitters.test$Salary)^2)
+}
+plot(lambdas, test.err, type = "b", xlab = "Shrinkage values", ylab = "Test MSE")
+min(test.err)
+lambdas[which.min(test.err)]
+
+#e
+install.packages('glmnet')
+library(glmnet)
+
+fit10e = lm(Salary ~ ., data = Hitters.train)
+pred10e = predict(fit10e, Hitters.test)
+mean((pred10e - Hitters.test$Salary)^2)
+
+x = model.matrix(Salary ~ ., data = Hitters.train)
+x.test = model.matrix(Salary ~ ., data = Hitters.test)
+y = Hitters.train$Salary
+lasso.fit = glmnet(x, y, alpha = 1)
+lasso.pred = predict(lasso.fit, s = 0.01, newx = x.test)
+mean((Hitters.test$Salary - lasso.pred)^2)
+ridge.fit = glmnet(x, y, alpha = 0)
+ridge.pred = predict(ridge.fit, s = 0.01, newx = x.test)
+mean((ridge.pred - Hitters.test$Salary)^2)
+
+#f
+boost = gbm(Salary ~ ., data = Hitters.train, distribution = "gaussian", n.trees = 1000, shrinkage = lambdas[which.min(test.err)])
+summary(boost)
+
+#g
+set.seed(1)
+bag.hitters = randomForest(Salary ~ ., data = Hitters.train, mtry = 19, ntree = 500)
+pred_bag_hit = predict(bag.hitters, newdata = Hitters.test)
+mean((pred_bag_hit - Hitters.test$Salary)^2)
