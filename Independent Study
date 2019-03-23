@@ -1,0 +1,762 @@
+-2.934112e+01 + (8.423016e-02 * 42) + (1.769125e+00 * 23) + (2.274346e-01 * 45) + (6.522338e-01 * 20) + (2.192838e-01 *5) + (2.017481e-01 *4) + (-2.154915e+00 * 0.39873) + (-3.395053e-01 * 13.140 )+ (1.089940e+00 * 4.41) + (-2.096640e-04 * 7867) + (7.289600e-02 *72.7) + (-4.605352e-01 *12) + (1.217151e-01 * 71) + (1.154776e-01 * 40.9) + (-3.257919e-07 * 367000) + (1.820992e-01 * 96) + (-1.053806e-01 *80) + (-4.276522e-02 * 46) + (4.654836e-03 *23)
+
+
+library(readxl)
+NCAA_Graduation_Rate <- read_excel("~/Downloads/NCAA Graduation Rate.xlsx")
+View(NCAA_Graduation_Rate)
+x = summary(NCAA_Graduation_Rate)
+boxplot(NCAA_Graduation_Rate)
+cor(NCAA_Graduation_Rate)
+
+#boxplots for response and 5 top correlated explanatory variables
+boxplot(NCAA_Graduation_Rate$grad_rate, NCAA_Graduation_Rate$act25, 
+        NCAA_Graduation_Rate$oncampus,NCAA_Graduation_Rate$full_sal, 
+        NCAA_Graduation_Rate$ast_sal, NCAA_Graduation_Rate$accept)
+#qqplots for response 
+qqnorm(NCAA_Graduation_Rate$grad_rate)
+qqline(NCAA_Graduation_Rate$grad_rate, col='red')
+
+
+library(car)
+vif(grad)
+grad = lm(formula = grad_rate ~ ., data=NCAA_Graduation_Rate )
+plot(grad)
+# install.packages("stargazer")
+# library(stargazer)
+install.packages("xtable")
+library(xtable)
+options(xtable.floating = FALSE)
+options(xtable.timestamp = "")
+xtable(grad)
+xtable(cor(NCAA_Graduation_Rate))
+xtable(x)
+# install.packages("tikzDevice")
+# library(tikzDevice)
+install.packages("crrstep")
+library(crrstep)
+backGrad = step(grad, direction = "backward", criterion = "AIC")
+forGrad = step(grad, direction = "forward", criterion = "AIC")
+stepGrad = step(grad, direction = "both", criterion = "AIC")
+
+# Train and Test
+
+install.packages("Metrics")
+library(Metrics)
+
+mseback = rep(0,100)
+msefor = rep(0,100)
+msestep = rep(0,100)
+
+for (i in 1:100) {
+  indv = sample(94,10)
+  test_set = NCAA_Graduation_Rate[indv,]
+  train_set = NCAA_Graduation_Rate[-indv,]
+  trainlm = lm(formula = grad_rate ~., data = train_set)
+  backtrain = step(trainlm, direction = "backward", criterion = "AIC")
+  fortrain = step(trainlm, direction = "forward", criterion = "AIC")
+  steptrain = step(trainlm, direction = "both", criterion = "AIC")
+  backtest = predict(backtrain, test_set)
+  fortest = predict(fortrain, test_set)
+  steptest = predict(steptrain, test_set)
+  obstest= test_set[,20]
+  mseback[i]=mse(obstest,backtest)
+  msefor[i]=mse(obstest,fortest)
+  msestep[i]=mse(obstest,steptest)
+}
+mean(mseback)
+mean(msefor)
+mean(msestep)
+
+coef(backtrain)
+coef(fortrain)
+coef(steptrain)
+
+
+
+obstrain = train_set[,20]
+
+btr = predict(backtrain)
+msebtr = mse(obstrain, btr)
+ftr = predict(fortrain)
+mseftr = mse(obstrain, ftr)
+str = predict(steptrain)
+msestr = mse(obstrain, str)
+
+#####Ridge Regression
+install.packages("lmridge")
+library(lmridge)
+library(MASS)
+
+## MSE for Test Ridges
+
+mod1 <- lmridge(formula = grad_rate ~., data=train_set, K = .1)
+dog1 = predict(mod1)
+pt1 = predict(mod1, test_set)
+pt1test = mse(obstest, pt1)
+rslt1train = mse(obstrain, dog1)
+
+mod2 <- lmridge(formula = grad_rate ~., data=train_set, K = .2)
+dog2 = predict(mod2)
+pt2 = predict(mod2, test_set)
+pt2test = mse(obstest, pt2)
+rslt2train = mse(obstrain, dog2)
+
+mod3 <- lmridge(formula = grad_rate ~., data=train_set, K = .5)
+dog3 = predict(mod3)
+pt3 = predict(mod3, test_set)
+pt3test = mse(obstest, pt3)
+rslt3train = mse(obstrain, dog3)
+
+mod4 <- lmridge(formula = grad_rate ~ ., data=train_set, K = 1)
+dog4 = predict(mod4)
+pt4 = predict(mod4, test_set)
+pt4test = mse(obstest, pt4)
+rslt4train = mse(obstrain, dog4)
+
+mod5 <- lmridge(formula = grad_rate ~ ., data=train_set, K = 2)
+dog5 = predict(mod5)
+pt5 = predict(mod5, test_set)
+pt5test = mse(obstest, pt5)
+rslt5train = mse(obstrain, dog5)
+
+## Grid Search to find Best Lambda
+install.packages('e1071')
+library(e1071)
+
+
+#Grid Search to find whole number K
+grdtst = rep(0,10)
+for (i in 1:10) {
+  mof = lmridge(formula = grad_rate ~ ., data=train_set, K = seq(1,10,1))
+  grd = predict(mof, test_set)
+  grdtst[i] = mse(obstest, grd[,i])
+}
+View(grdtst)
+# Smallest MSE is K<1
+
+errgrd = rep(0,100)
+for (i in 1:100) {
+  moa = lmridge(formula = grad_rate ~ ., data=train_set, K = seq(0.01,1,0.01))
+  gs = predict(moa, test_set)
+  errgrd[i] = mse(obstest, gs[,i])
+}
+gs
+View(errgrd)
+
+# Smallest MSE is 32.58766 for K= 0.08
+
+mod7 <- lmridge(formula = grad_rate ~ ., data=train_set, K = 0.08)
+pt7 = predict(mod7, test_set)
+pt7test = mse(obstest, pt7)
+dog7 = predict(mod7)
+rslt7train = mse(obstrain, dog7)
+pt7test
+rslt7train
+
+View(mod7)
+## K-Fold Cross Validation 
+
+folds_five = createFolds(NCAA_Graduation_Rate$grad_rate, k=5)
+fold1 = NCAA_Graduation_Rate[folds_five[["Fold1"]],]
+fold2 = NCAA_Graduation_Rate[folds_five[["Fold2"]],]
+fold3 = NCAA_Graduation_Rate[folds_five[["Fold3"]],]
+fold4 = NCAA_Graduation_Rate[folds_five[["Fold4"]],]
+fold5 = NCAA_Graduation_Rate[folds_five[["Fold5"]],]
+
+nof1 = NCAA_Graduation_Rate[-folds_five[["Fold1"]],]
+nof2 = NCAA_Graduation_Rate[-folds_five[["Fold2"]],]
+nof3 = NCAA_Graduation_Rate[-folds_five[["Fold3"]],]
+nof4 = NCAA_Graduation_Rate[-folds_five[["Fold4"]],]
+nof5 = NCAA_Graduation_Rate[-folds_five[["Fold5"]],]
+
+foldsobs1 = fold1[,20]
+foldsobs2 = fold2[,20]
+foldsobs3 = fold3[,20]
+foldsobs4 = fold4[,20]
+foldsobs5 = fold5[,20]
+
+rfoldsobs1 = nof1[,20]
+rfoldsobs2 = nof2[,20]
+rfoldsobs3 = nof3[,20]
+rfoldsobs4 = nof4[,20]
+rfoldsobs5 = nof5[,20]
+
+Mean_K_Fold = 0
+MKF = 0
+rfold1mse = rep(0,100)
+rfold2mse = rep(0,100)
+rfold3mse = rep(0,100)
+rfold4mse = rep(0,100)
+rfold5mse = rep(0,100)
+
+for (m in 1:100) {
+  
+trainfold1 = lmridge(formula = grad_rate ~ ., data=nof1, K = m/100)
+pf1 = predict(trainfold1, fold1)
+rf1 = predict(trainfold1)
+
+trainfold2 = lmridge(formula = grad_rate ~ ., data=nof2, K = m/100)
+pf2 = predict(trainfold2, fold2)
+rf2 = predict(trainfold2)
+
+trainfold3 = lmridge(formula = grad_rate ~ ., data=nof3, K = m/100)
+pf3 = predict(trainfold3, fold3)
+rf3 = predict(trainfold3)
+
+trainfold4 = lmridge(formula = grad_rate ~ ., data=nof4, K = m/100)
+pf4 = predict(trainfold4, fold4)
+rf4 = predict(trainfold4)
+
+trainfold5 = lmridge(formula = grad_rate ~ ., data=nof5, K = m/100)
+pf5 = predict(trainfold5, fold5)
+rf5 = predict(trainfold5)
+
+fold1mse[m] = mse(foldsobs1, pf1)
+fold2mse[m] = mse(foldsobs2, pf2)
+fold3mse[m] = mse(foldsobs3, pf3)
+fold4mse[m] = mse(foldsobs4, pf4)
+fold5mse[m] = mse(foldsobs5, pf5)
+
+rfold1mse[m] = mse(rfoldsobs1, rf1)
+rfold2mse[m] = mse(rfoldsobs2, rf2)
+rfold3mse[m] = mse(rfoldsobs3, rf3)
+rfold4mse[m] = mse(rfoldsobs4, rf4)
+rfold5mse[m] = mse(rfoldsobs5, rf5)
+
+Mean_K_Fold[m] = (fold1mse[m] + fold2mse[m] + fold3mse[m] + fold4mse[m] + fold5mse[m])/5
+MKF[m] = (rfold1mse[m] + rfold2mse[m] + rfold3mse[m] + rfold4mse[m] + rfold5mse[m])/5
+}
+View(Mean_K_Fold)
+View(MKF)
+
+## Smallest MSE is 58.20843 at Lambda = 0.06
+btrainfold1 = lmridge(formula = grad_rate ~ ., data=nof1, K = .06)
+bpf1 = predict(btrainfold1, fold1)
+brf1 = predict(btrainfold1)
+
+btrainfold2 = lmridge(formula = grad_rate ~ ., data=nof2, K = .06)
+bpf2 = predict(btrainfold2, fold2)
+brf2 = predict(btrainfold2)
+
+btrainfold3 = lmridge(formula = grad_rate ~ ., data=nof3, K = .06)
+bpf3 = predict(btrainfold3, fold3)
+brf3 = predict(btrainfold3)
+
+btrainfold4 = lmridge(formula = grad_rate ~ ., data=nof4, K = .06)
+bpf4 = predict(btrainfold4, fold4)
+brf4 = predict(btrainfold4)
+
+btrainfold5 = lmridge(formula = grad_rate ~ ., data=nof5, K = .06)
+bpf5 = predict(btrainfold5, fold5)
+brf5 = predict(btrainfold5)
+
+bfold1mse = mse(foldsobs1, bpf1)
+bfold2mse = mse(foldsobs2, bpf2)
+bfold3mse = mse(foldsobs3, bpf3)
+bfold4mse = mse(foldsobs4, bpf4)
+bfold5mse = mse(foldsobs5, bpf5)
+
+brfold1mse = mse(rfoldsobs1, brf1)
+brfold2mse = mse(rfoldsobs2, brf2)
+brfold3mse = mse(rfoldsobs3, brf3)
+brfold4mse = mse(rfoldsobs4, brf4)
+brfold5mse = mse(rfoldsobs5, brf5)
+
+bMean_K_Fold = (bfold1mse + bfold2mse + bfold3mse + bfold4mse + bfold5mse)/5
+bMean_K_Fold
+bMKF = (brfold1mse + brfold2mse + brfold3mse + brfold4mse + brfold5mse)/5
+bMKF
+
+
+#Leave one out Cross Validation
+tst_mse = rep(0,94)
+mn_tst = 0
+tr_mse = rep(0,93)
+mn_tr = 0
+for (i in 1:100) {
+  
+  for (n in 1:94) {
+    trn = NCAA_Graduation_Rate[-n,]
+    mdl = lmridge(formula = grad_rate ~., data = trn, K=(i/100))
+    LOOCV_prd = predict(mdl, NCAA_Graduation_Rate)
+    tst_mse[n] = mse(NCAA_Graduation_Rate$grad_rate[n],LOOCV_prd[n])
+    trLOOCV_prd = predict(mdl)
+    tr_mse[n] = mse(trn$grad_rate, trLOOCV_prd)
+  }
+  mn_tst[i] = mean(tst_mse)
+  mn_tr[i] = mean(tr_mse)
+}
+View(mn_tst)
+mean(tst_mse[1])
+View(tst_mse)
+
+View(mn_tr)
+mean(tr_mse[1])
+View(tr_mse)
+
+# Smallest MSE is 57.28971 at Lamda =0.13 
+
+atst_mse = rep(0,94)
+atr_mse = rep(0,93)
+for (s in 1:94) {
+  atrn = NCAA_Graduation_Rate[-s,]
+  amdl = lmridge(grad_rate ~., data = atrn, K=.13)
+  aLOOCV_prd = predict(amdl, NCAA_Graduation_Rate)
+  atrLOOCV_prd = predict(amdl)
+  atst_mse[s] = mse(NCAA_Graduation_Rate$grad_rate[s],aLOOCV_prd[s])
+  atr_mse[s] = mse(atrn$grad_rate,atrLOOCV_prd)
+}
+mean(atr_mse)
+View(amdl)
+# Lasso
+
+install.packages("glmnet")
+library(glmnet)
+
+ex = model.matrix(grad_rate~., data = NCAA_Graduation_Rate)[,-1]
+y = NCAA_Graduation_Rate$grad_rate
+trex = ex[-indv,]
+tray = y[-indv]
+
+# Grid Search
+lasso.mod1 = glmnet(trex, tray, alpha=1, lambda = .1)
+lasso.pred1 = predict(lasso.mod1, s=.1, newx = ex[indv,])
+lasso.mse1 =mse(obstest, lasso.pred1)
+lasso.mse1
+lasso.pred_tr1 = predict(lasso.mod1, s=.1, newx = ex[-indv,])
+lasso.mse_tr1 =mse(obstrain, lasso.pred_tr1)
+lasso.mse_tr1
+
+lasso.mod2 = glmnet(trex, tray, alpha=1, lambda = .2)
+lasso.pred2 = predict(lasso.mod2, s=.2, newx = ex[indv,])
+lasso.mse2 =mse(obstest, lasso.pred2)
+lasso.mse2
+lasso.pred_tr2 = predict(lasso.mod2, s=.1, newx = ex[-indv,])
+lasso.mse_tr2 =mse(obstrain, lasso.pred_tr2)
+lasso.mse_tr2
+
+lasso.mod3 = glmnet(trex, tray, alpha=1, lambda = .5)
+lasso.pred3 = predict(lasso.mod3, s=.5, newx = ex[indv,])
+lasso.mse3 =mse(obstest, lasso.pred3)
+lasso.mse3
+lasso.pred_tr3 = predict(lasso.mod3, s=.1, newx = ex[-indv,])
+lasso.mse_tr3 =mse(obstrain, lasso.pred_tr3)
+lasso.mse_tr3
+
+lasso.mod4 = glmnet(trex, tray, alpha=1, lambda = 1)
+lasso.pred4 = predict(lasso.mod4, s=1, newx = ex[indv,])
+lasso.mse4 =mse(obstest, lasso.pred4)
+lasso.mse4
+lasso.pred_tr4 = predict(lasso.mod4, s=.1, newx = ex[-indv,])
+lasso.mse_tr4 =mse(obstrain, lasso.pred_tr4)
+lasso.mse_tr4
+
+lasso.mod5 = glmnet(trex, tray, alpha=1, lambda = 2)
+lasso.pred5 = predict(lasso.mod5, s=2, newx = ex[indv,])
+lasso.mse5 =mse(obstest, lasso.pred5)
+lasso.mse5
+lasso.pred_tr5 = predict(lasso.mod5, s=.1, newx = ex[-indv,])
+lasso.mse_tr5 =mse(obstrain, lasso.pred_tr5)
+lasso.mse_tr5
+
+# Best Lambda is less than 0.2
+
+errgrd.lasso = rep(0,20)
+moa.lasso = 0
+gs.lasso = 0
+aaa = seq(.01,.2,.01)
+for (i in 1:20) {
+  moa.lasso = glmnet(trex, tray, alpha=1, lambda = aaa[i])
+  gs.lasso = predict(moa.lasso, s=aaa, newx = ex[indv,])
+  errgrd.lasso[i] = mse(obstest, gs.lasso[,i])
+}
+View(gs.lasso)
+View(errgrd.lasso)
+
+# Smallest MSE is 34.46501 with penalty term of 0.08
+
+lasso.mod6 = glmnet(trex, tray, alpha=1, lambda = .08)
+lasso.pred6 = predict(lasso.mod6, s=.08, newx = ex[indv,])
+lasso.mse6 =mse(obstest, lasso.pred6)
+lasso.mse6
+lasso.pred_tr6 = predict(lasso.mod6, s=.08, newx = ex[-indv,])
+lasso.mse_tr6 =mse(obstrain, lasso.pred_tr6)
+lasso.mse_tr6
+
+View(lasso.mod6)
+# Lasso K-fold
+
+trex.f1 = ex[-folds_five[["Fold1"]],]
+tray.f1 = y[-folds_five[["Fold1"]]]
+y.lasK1 = y[folds_five[["Fold1"]]]
+y.lasK_tr1 = y[-folds_five[["Fold1"]]]
+
+trex.f2 = ex[-folds_five[["Fold2"]],]
+tray.f2 = y[-folds_five[["Fold2"]]]
+y.lasK2 = y[folds_five[["Fold2"]]]
+y.lasK_tr2 = y[-folds_five[["Fold2"]]]
+
+trex.f3 = ex[-folds_five[["Fold3"]],]
+tray.f3 = y[-folds_five[["Fold3"]]]
+y.lasK3 = y[folds_five[["Fold3"]]]
+y.lasK_tr3 = y[-folds_five[["Fold3"]]]
+
+trex.f4 = ex[-folds_five[["Fold4"]],]
+tray.f4 = y[-folds_five[["Fold4"]]]
+y.lasK4 = y[folds_five[["Fold4"]]]
+y.lasK_tr4 = y[-folds_five[["Fold4"]]]
+
+trex.f5 = ex[-folds_five[["Fold5"]],]
+tray.f5 = y[-folds_five[["Fold5"]]]
+y.lasK5 = y[folds_five[["Fold5"]]]
+y.lasK_tr5 = y[-folds_five[["Fold5"]]]
+
+Mean_K_Fold_Lasso = 0
+foldmse.lasso1 = rep(0,10)
+foldmse.lasso2 = rep(0,10)
+foldmse.lasso3 = rep(0,10)
+foldmse.lasso4 = rep(0,10)
+foldmse.lasso5 = rep(0,10)
+
+ 
+for (n in 1:100) {
+  
+  trainfold.lasso1 =  glmnet(trex.f1, tray.f1, alpha=1, lambda = n/100)
+  pf.lasso1 = predict(trainfold.lasso1, s= n/100, newx = ex[folds_five[["Fold1"]],])
+  foldmse.lasso1[n] = mse(y.lasK1, pf.lasso1)
+  
+  trainfold.lasso2 =  glmnet(trex.f2, tray.f2, alpha=1, lambda = n/100)
+  pf.lasso2 = predict(trainfold.lasso2, s= n/100, newx = ex[folds_five[["Fold2"]],])
+  foldmse.lasso2[n] = mse(y.lasK2, pf.lasso2)
+ 
+  trainfold.lasso3 =  glmnet(trex.f3, tray.f3, alpha=1, lambda = n/100)
+  pf.lasso3 = predict(trainfold.lasso3, s= n/100, newx = ex[folds_five[["Fold3"]],])
+  foldmse.lasso3[n] = mse(y.lasK3, pf.lasso3)
+  
+  trainfold.lasso4 =  glmnet(trex.f4, tray.f4, alpha=1, lambda = n/100)
+  pf.lasso4 = predict(trainfold.lasso4, s= n/100, newx = ex[folds_five[["Fold4"]],])
+  foldmse.lasso4[n] = mse(y.lasK4, pf.lasso4)
+  
+  trainfold.lasso5 =  glmnet(trex.f5, tray.f5, alpha=1, lambda = n/100)
+  pf.lasso5 = predict(trainfold.lasso5, s= n/100, newx = ex[folds_five[["Fold5"]],])
+  foldmse.lasso5[n] = mse(y.lasK5, pf.lasso5)
+
+  Mean_K_Fold_Lasso[n] = (foldmse.lasso1[n] + foldmse.lasso2[n] + foldmse.lasso3[n] + foldmse.lasso4[n] + foldmse.lasso5[n])/5  
+}
+View(Mean_K_Fold_Lasso)
+
+# Smallest MSE is 57.59025 with the penalty term equal to 0.14 
+
+# Train Set
+
+trainfold.lasso7 =  glmnet(trex.f1, tray.f1, alpha=1, lambda = 0.14)
+pf.lasso7 = predict(trainfold.lasso7, s= 0.14, newx = ex[-folds_five[["Fold1"]],])
+foldmse.lasso7 = mse(y.lasK_tr1, pf.lasso7)
+
+trainfold.lasso8 =  glmnet(trex.f2, tray.f2, alpha=1, lambda = 0.14)
+pf.lasso8 = predict(trainfold.lasso8, s= 0.14, newx = ex[-folds_five[["Fold2"]],])
+foldmse.lasso8 = mse(y.lasK_tr2, pf.lasso8)
+
+trainfold.lasso9 =  glmnet(trex.f3, tray.f3, alpha=1, lambda = 0.14)
+pf.lasso9 = predict(trainfold.lasso9, s= 0.14, newx = ex[-folds_five[["Fold3"]],])
+foldmse.lasso9 = mse(y.lasK_tr3, pf.lasso9)
+
+trainfold.lasso10 =  glmnet(trex.f4, tray.f4, alpha=1, lambda = 0.14)
+pf.lasso10 = predict(trainfold.lasso10, s= 0.14, newx = ex[-folds_five[["Fold4"]],])
+foldmse.lasso10 = mse(y.lasK_tr4, pf.lasso10)
+
+trainfold.lasso11 =  glmnet(trex.f5, tray.f5, alpha=1, lambda = 0.14)
+pf.lasso11 = predict(trainfold.lasso11, s= 0.14, newx = ex[-folds_five[["Fold5"]],])
+foldmse.lasso11 = mse(y.lasK_tr5, pf.lasso11)
+
+Mean_K_Fold_Lasso_trn = (foldmse.lasso7 + foldmse.lasso8 + foldmse.lasso9 + foldmse.lasso10 + foldmse.lasso11)/5  
+Mean_K_Fold_Lasso_trn
+
+# Leave One Out LASSO
+tst_mse.lasso = rep(0,94)
+mn_tst.lasso = 0
+tr_mse.lasso = rep(0,94)
+mn_tr.lasso = 0
+for (p in 1:100) {
+  for (q in 1:94) {
+  xtrn.lasso = ex[-q,]
+  ytrn.lasso = y[-q]
+  mdl.lasso =  glmnet(xtrn.lasso, ytrn.lasso, alpha=1, lambda = p/100)
+  LOOCV_prd.lasso = predict(mdl.lasso, s= p/100, newx = ex)
+  tst_mse.lasso[q] = mse(y[q], LOOCV_prd.lasso[q])
+  }
+  mn_tst.lasso[p] = mean(tst_mse.lasso)
+}
+View(mn_tst.lasso)
+
+# Smallest MSE is 59.07550 at a penalty term of 0.12
+
+LOOCV_prd.lasso.trn = 0
+tst_mse.lasso.trn = rep(0,93)
+for (q in 1:93) {
+  xtrn.lasso = ex[-q,]
+  ytrn.lasso = y[-q]
+  mdl.lasso.trn =  glmnet(xtrn.lasso, ytrn.lasso, alpha=1, lambda = 0.12)
+  LOOCV_prd.lasso.trn = predict(mdl.lasso.trn, s= 0.12, newx = xtrn.lasso)
+  tst_mse.lasso.trn[q] = mse(ytrn.lasso[q], LOOCV_prd.lasso.trn[q])
+}
+mean(tst_mse.lasso.trn)
+
+# MSE for train set is 37.85753
+View(mdl.lasso.trn)
+# Elastic Net
+
+#Grid Search
+
+# r-bloggers way
+search <- foreach(i = a, .combine = rbind) %dopar% {
+  cv <- cv.glmnet(trex, tray, nfold = 10, type.measure = "deviance", paralle = TRUE, alpha = i)
+  data.frame(cvm = cv$cvm[cv$lambda == cv$lambda.1se], lambda.1se = cv$lambda.1se, alpha = i)
+}
+cv3 <- search[search$cvm == min(search$cvm), ]
+cv3
+# Optimal alpha is 0.64 
+
+en.mse1 = 0
+en.alpha = 0
+a = seq(0.01, 1, .01)
+b = seq(0.01, 1, .01)
+for (j in 1:100) {
+  for (k in 1:100) {
+    en.mod1 = glmnet(trex, tray, alpha=a[j], lambda = b[k])
+    en.pred1 = predict(en.mod1, s=b, newx = ex[indv,])
+    en.mse1[k] =mse(obstest, en.pred1[,k]) 
+  }
+  en.alpha[j] = min(en.mse1)
+}
+View(en.alpha)
+
+#Optimal Alpha is .01
+en.mse2 =0
+for (k in 1:100) {
+  en.mod2 = glmnet(trex, tray, alpha=.01, lambda = b[k])
+  en.pred2 = predict(en.mod2, s=b, newx = ex[indv,])
+  en.mse2[k] =mse(obstest, en.pred2[,k]) 
+}
+View(en.mse2)
+# Optimal Lambda is 0.8 at alpha = .01 with MSE of 32.73429
+elastic_grid = glmnet(trex, tray, alpha=.01, lambda = 0.8)
+View(elastic_grid)
+
+# Train set 
+elastic.mod6 = glmnet(trex, tray, alpha=0.01, lambda = .8)
+elastic.pred6 = predict(elastic.mod6, s=.8, newx = ex[indv,])
+elastic.mse6 =mse(obstest, elastic.pred6)
+elastic.mse6
+elastic.pred_tr6 = predict(elastic.mod6, s=.8, newx = ex[-indv,])
+elastic.mse_tr6 =mse(obstrain, elastic.pred_tr6)
+elastic.mse_tr6
+# K-fold for Elastic Net
+
+
+Mean_K_Fold_en = 0
+foldmse.en1 = rep(0,10)
+foldmse.en2 = rep(0,10)
+foldmse.en3 = rep(0,10)
+foldmse.en4 = rep(0,10)
+foldmse.en5 = rep(0,10)
+K_en_alpha = 0
+
+for (m in 1:100) {
+  for (n in 1:500) {
+    
+    trainfold.en1 =  glmnet(trex.f1, tray.f1, alpha=a[m], lambda = n/500)
+    pf.en1 = predict(trainfold.en1, s= n/500, newx = ex[folds_five[["Fold1"]],])
+    foldmse.en1[n] = mse(y.lasK1, pf.en1)
+    
+    trainfold.en2 =  glmnet(trex.f2, tray.f2, alpha=a[m], lambda = n/500)
+    pf.en2 = predict(trainfold.en2, s= n/500, newx = ex[folds_five[["Fold2"]],])
+    foldmse.en2[n] = mse(y.lasK2, pf.en2)
+    
+    trainfold.en3 =  glmnet(trex.f3, tray.f3, alpha= a[m], lambda = n/500)
+    pf.en3 = predict(trainfold.en3, s= n/500, newx = ex[folds_five[["Fold3"]],])
+    foldmse.en3[n] = mse(y.lasK3, pf.en3)
+    
+    trainfold.en4 =  glmnet(trex.f4, tray.f4, alpha=a[m], lambda = n/500)
+    pf.en4 = predict(trainfold.en4, s= n/500, newx = ex[folds_five[["Fold4"]],])
+    foldmse.en4[n] = mse(y.lasK4, pf.en4)
+    
+    trainfold.en5 =  glmnet(trex.f5, tray.f5, alpha=a[m], lambda = n/500)
+    pf.en5 = predict(trainfold.en5, s= n/500, newx = ex[folds_five[["Fold5"]],])
+    foldmse.en5[n] = mse(y.lasK5, pf.en5)
+    
+    Mean_K_Fold_en[n] = (foldmse.en1[n] + foldmse.en2[n] + foldmse.en3[n] + foldmse.en4[n] + foldmse.en5[n])/5  
+  }
+  K_en_alpha[m] = min(Mean_K_Fold_en)
+}
+
+View(K_en_alpha)
+View(Mean_K_Fold_en)
+
+#Smallest possible MSE is 57.41673 at alpha = 0.33
+
+foldmse.en6 = rep(0,10)
+foldmse.en7 = rep(0,10)
+foldmse.en8 = rep(0,10)
+foldmse.en9 = rep(0,10)
+foldmse.en10 = rep(0,10)
+Mean_K_Fold_en1 = 0
+
+for (n in 1:500) {
+  
+  trainfold.en6 =  glmnet(trex.f1, tray.f1, alpha=0.33, lambda = n/500)
+  pf.en6 = predict(trainfold.en6, s= n/500, newx = ex[folds_five[["Fold1"]],])
+  foldmse.en6[n] = mse(y.lasK1, pf.en6)
+  
+  trainfold.en7 =  glmnet(trex.f2, tray.f2, alpha=0.33, lambda = n/500)
+  pf.en7 = predict(trainfold.en7, s= n/500, newx = ex[folds_five[["Fold2"]],])
+  foldmse.en7[n] = mse(y.lasK2, pf.en7)
+  
+  trainfold.en8 =  glmnet(trex.f3, tray.f3, alpha= 0.33, lambda = n/500)
+  pf.en8 = predict(trainfold.en8, s= n/500, newx = ex[folds_five[["Fold3"]],])
+  foldmse.en8[n] = mse(y.lasK3, pf.en8)
+  
+  trainfold.en9 =  glmnet(trex.f4, tray.f4, alpha=0.33, lambda = n/500)
+  pf.en9 = predict(trainfold.en9, s= n/500, newx = ex[folds_five[["Fold4"]],])
+  foldmse.en9[n] = mse(y.lasK4, pf.en9)
+  
+  trainfold.en10 =  glmnet(trex.f5, tray.f5, alpha=0.33, lambda = n/500)
+  pf.en10 = predict(trainfold.en10, s= n/500, newx = ex[folds_five[["Fold5"]],])
+  foldmse.en10[n] = mse(y.lasK5, pf.en10)
+  
+  Mean_K_Fold_en1[n] = (foldmse.en6[n] + foldmse.en7[n] + foldmse.en8[n] + foldmse.en9[n] + foldmse.en10[n])/5  
+}
+View(Mean_K_Fold_en1)
+
+# Smallest MSE is 57.41673 at alpha = 0.33 and lamda=1.91
+
+# Train Set
+
+trainfold.en7 =  glmnet(trex.f1, tray.f1, alpha=0.33, lambda = 1.91)
+pf.en7 = predict(trainfold.en7, s= 1.91, newx = ex[-folds_five[["Fold1"]],])
+foldmse.en7 = mse(y.lasK_tr1, pf.en7)
+
+trainfold.en8 =  glmnet(trex.f2, tray.f2, alpha=0.33, lambda = 1.91)
+pf.en8 = predict(trainfold.en8, s= 1.91, newx = ex[-folds_five[["Fold2"]],])
+foldmse.en8 = mse(y.lasK_tr2, pf.en8)
+
+trainfold.en9 =  glmnet(trex.f3, tray.f3, alpha=0.33, lambda = 1.91)
+pf.en9 = predict(trainfold.en9, s= 1.91, newx = ex[-folds_five[["Fold3"]],])
+foldmse.en9 = mse(y.lasK_tr3, pf.en9)
+
+trainfold.en10 =  glmnet(trex.f4, tray.f4, alpha=0.33, lambda = 1.91)
+pf.en10 = predict(trainfold.en10, s= 1.91, newx = ex[-folds_five[["Fold4"]],])
+foldmse.en10 = mse(y.lasK_tr4, pf.en10)
+
+trainfold.en11 =  glmnet(trex.f5, tray.f5, alpha=0.33, lambda = 1.91)
+pf.en11 = predict(trainfold.en11, s= 1.91, newx = ex[-folds_five[["Fold5"]],])
+foldmse.en11 = mse(y.lasK_tr5, pf.en11)
+
+Mean_K_Fold_en_trn = (foldmse.en7 + foldmse.en8 + foldmse.en9 + foldmse.en10 + foldmse.en11)/5  
+Mean_K_Fold_en_trn
+
+# MSE for train set is 44.57968
+
+#Leave One Out Elastic Net
+tst_mse.en = rep(0,94)
+mn_tst.en = 0
+tr_mse.en = rep(0,94)
+mn_tr.en = 0
+alpha_loocv = 0
+
+c = seq(0, 1, .1)
+d = seq(2, 3, .01)
+
+for (r in 1:10) {
+  for (p in 1:100) {
+    for (q in 1:94) {
+      xtrn.en = ex[-q,]
+      ytrn.en = y[-q]
+      mdl.en =  glmnet(xtrn.en, ytrn.en, alpha=a[r], lambda = d[p])
+      LOOCV_prd.en = predict(mdl.en, s= d[p], newx = ex)
+      tst_mse.en[q] = mse(y[q], LOOCV_prd.en[q])
+    }
+    mn_tst.en[p] = mean(tst_mse.en)
+  }
+  alpha_loocv[r] = min(mn_tst.en)
+}
+
+View(alpha_loocv)
+View(mn_tst.en)
+# Smallest MSE has alpha between 0 and .1
+# The smallest MSE is 57.84022 at alpha = 0.02 ****OLD****
+tst_mse.en1 = rep(0,94)
+mn_tst.en1 = 0
+tr_mse.en1 = rep(0,94)
+mn_tr.en1 = 0
+alpha_loocv1 = 0
+e = seq(0, .1, .01)
+
+for (r in 1:10) {
+  for (p in 1:100) {
+    for (q in 1:94) {
+      xtrn.en1 = ex[-q,]
+      ytrn.en1 = y[-q]
+      mdl.en1 =  glmnet(xtrn.en1, ytrn.en1, alpha=e[r], lambda = d[p])
+      LOOCV_prd.en1 = predict(mdl.en1, s= d[p], newx = ex)
+      tst_mse.en1[q] = mse(y[q], LOOCV_prd.en1[q])
+    }
+    mn_tst.en1[p] = mean(tst_mse.en1)
+  }
+  alpha_loocv1[r] = min(mn_tst.en1)
+}
+View(alpha_loocv1)
+View(mn_tst.en1)
+# Smallest MSE is 57.41398 at alpha = 0.01
+
+tst_mse.en2 = 0
+mn_tst.en2 = 0
+
+
+for (p in 1:100) {
+  for (q in 1:94) {
+    xtrn.en2 = ex[-q,]
+    ytrn.en2 = y[-q]
+    mdl.en2 =  glmnet(xtrn.en2, ytrn.en2, alpha=0.01, lambda = d[p])
+    LOOCV_prd.en2 = predict(mdl.en2, s= d[p], newx = ex)
+    tst_mse.en2[q] = mse(y[q], LOOCV_prd.en2[q])
+  }
+  mn_tst.en2[p] = mean(tst_mse.en2)
+}
+View(mn_tst.en2)
+
+# The smallest MSE is 57.41398 at alpha = 0.01 and Lambda = 2.13
+
+#Train Set
+
+LOOCV_prd.en.trn = 0
+tst_mse.en.trn = rep(0,93)
+for (q in 1:93) {
+  xtrn.entrn = ex[-q,]
+  ytrn.entrn = y[-q]
+  mdl.entrn =  glmnet(xtrn.entrn, ytrn.entrn, alpha=.01, lambda = 2.13)
+  LOOCV_prd.en.trn = predict(mdl.entrn, s= 2.13, newx = xtrn.entrn)
+  tst_mse.en.trn[q] = mse(ytrn.entrn[q], LOOCV_prd.en.trn[q])
+}
+mean(tst_mse.en.trn)
+# Train set has MSE of 40.29884
+
+View(mdl.entrn)
+
+# 4.907585e-02top10  + 1.744323e+00act25  + 2.063599e-01oncampus + 6.596703e-01ft_grad  + 2.257848e-01size + 1.543102e-01tateach  + -1.433349e+00bbindex 
+# -1.743424e-01tuition + 1.364446e+00board  + -2.273103e-04attend + 1.497379e-01full_sal + -2.770940e-01sf_ratio  + 1.121761e-01white 
+# 1.173522e-01ast_sal + -5.357849e-07pop + 3.765178e-02phd + -8.535055e-02accept + -5.633920e-02l_pct + 1.721491e-02outstate
+
+summary(mdl.entrn)
+
+# K-fold gave best results IMO
+final.ridge = lmridge(formula = grad_rate ~., data=NCAA_Graduation_Rate, K = .06)
+final.lasso = glmnet(ex, y, alpha = 1, lambda = 0.14)
+final.en = glmnet(ex, y, alpha = 0.33, lambda = 1.91)
+
+coef(final.ridge)
+coef(final.lasso)
+#outstate and ast_sal removed
+coef(final.en)
+#(Tuition, phd, l_pct, outstate)
+#Finished
