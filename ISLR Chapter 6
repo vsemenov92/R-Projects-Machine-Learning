@@ -79,4 +79,4 @@ barplot(c(ols_test, ridge_test, lasso_test, pcr_test, pls_test), col="green", na
 # Results for OLS, Lasso, and Ridge are similar. For Lasso F.undergrad and Books were shrunk to 0.
 # All models have an R^2 around 0.9 except for PCR which is lower than 0.8. All models except PCR predict college applications with high accuracy
 
-#############################################################################
+##############################################################################
