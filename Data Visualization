@@ -1,0 +1,78 @@
+# Data Visualization
+install.packages('ggplot2')
+library(ggplot2)
+pl = ggplot(data=mtcars, aes(x=mpg, y=hp)) + geom_point()
+pl2 = pl + facet_grid(cyl~.) + stat_smooth()
+pl2 + coord_cartesian(xlim = c(15,25)) + theme_bw()
+
+# Histograms
+install.packages('ggplot2movies')
+library(ggplot2movies)
+
+# DATA AESTHETICS
+pl = ggplot(movies, aes(x=rating))
+
+# Geometry
+pl2 = pl + geom_histogram(binwidth = 0.1, color='red', fill='green', alpha=0.4)
+pl3 = pl2 + xlab('Movie Rating') + ylab('Movie Count')
+pl3 + ggtitle('MY TITLE')
+
+pl + geom_histogram(binwidth = 0.1, aes(fill=..count..))
+
+#Scatterplots
+# DATA AESTHETICS
+pl = ggplot(data=mtcars, aes(x=wt, y=mpg))
+
+# Geometry
+pl + geom_point(aes(shape=factor(cyl),color=factor(cyl)),size=3)
+pl + geom_point(size=3, color='#43e8d8')
+           
+# Hex color picker codes
+pl2=pl + geom_point(aes(color=hp),size=3)
+pl2 + scale_color_gradient(low='#43e8d8', high='red')
+
+# Barplots
+head(mpg)
+pl = ggplot(mpg, aes(x=class))
+pl + geom_bar(aes(fill=drv))
+pl + geom_bar(aes(fill=drv),position = "dodge")
+pl + geom_bar(aes(fill=drv),position = "fill")
+
+#Boxplots
+head(mtcars)
+pl = ggplot(mtcars,aes(x=factor(cyl), y=mpg))
+pl + geom_boxplot()
+pl + geom_boxplot() + coord_flip()
+pl + geom_boxplot(aes(fill=factor(cyl)))
+
+# Variable Plotting
+install.packages('hexbin')
+library(hexbin)
+pl = ggplot(movies, aes(x=year, y=rating))
+pl2 = pl + geom_hex(binwidth = c(3,1)) 
+pl2 = pl + geom_density2d()
+pl2 + scale_fill_gradient(high='red', low = 'blue')
+
+# Coordinates and Faceting
+pl = ggplot(mpg, aes(x=displ, y=hwy)) + geom_point()
+pl
+pl2 = pl + coord_cartesian(xlim = c(1,4), ylim = c(15,30));pl2
+pl2 = pl + coord_fixed(ratio = 1/3);pl2
+pl + facet_grid(.~cyl)
+pl + facet_grid(drv~.)
+
+#Themes
+
+install.packages('ggthemes')
+library(ggthemes)
+theme_set(theme_wsj())
+pl = ggplot(mtcars,aes(x=wt, y=mpg)) + geom_point();pl
+             
+# PLOTLY THIS IS REALLY COOL
+install.packages('plotly')
+library(plotly)
+
+pl = ggplot(mtcars,aes(mpg,wt)) + geom_point()
+pl
+gpl = ggplotly(pl)
+gpl
