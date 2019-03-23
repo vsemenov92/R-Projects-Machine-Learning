@@ -1,0 +1,77 @@
+# 10
+install.packages('ISLR ')
+library(ISLR)
+#a
+View(Weekly)
+summary(Weekly)
+pairs(Weekly)
+cor(Weekly[, -9])
+
+#b
+glm.fit = glm(Direction ~ Lag1 + Lag2 + Lag3 + Lag4 + Lag5 + Volume, data = Weekly, 
+              family = binomial)
+summary(glm.fit)
+
+#c
+prob = predict(glm.fit, type = "response")
+pred = rep("Down", length(prob))
+pred[prob > 0.5] = "Up"
+table(pred, Weekly$Direction)
+
+#d
+train = (Weekly$Year < 2009)
+Weekly.20092010 = Weekly[!train, ]
+Direction.20092010 = Weekly$Direction[!train]
+fit.glm2 = glm(Direction ~ Lag2, data = Weekly, family = binomial, subset = train)
+summary(fit.glm2)
+
+probs2 = predict(fit.glm2, Weekly.20092010, type = "response")
+pred.glm2 = rep("Down", length(probs2))
+pred.glm2[probs2 > 0.5] <- "Up"
+table(pred.glm2, Direction.20092010)
+
+#e
+library(MASS)
+fit_lda = lda(Direction ~ Lag2, data = Weekly, subset = train)
+fit_lda
+
+pred_lda = predict(fit_lda, Weekly.20092010)
+table(pred_lda$class, Direction.20092010)
+
+#f
+fit_qda = qda(Direction ~ Lag2, data = Weekly, subset = train)
+fit_qda
+pred_qda = predict(fit_qda, Weekly.20092010)
+table(pred_qda$class, Direction.20092010)
+
+#g
+library(class)
+train_X = as.matrix(Weekly$Lag2[train])
+test_X = as.matrix(Weekly$Lag2[!train])
+train_Direction = Weekly$Direction[train]
+set.seed(1)
+pred_knn = knn(train_X, test_X, train_Direction, k = 1)
+table(pred_knn, Direction.20092010)
+
+#i
+
+fit_glm3 <- glm(Direction ~ Lag2:Lag1, data = Weekly, family = binomial, subset = train)
+prob3 <- predict(fit_glm3, Weekly.20092010, type = "response")
+pred_glm3 <- rep("Down", length(prob3))
+pred_glm3[prob3 > 0.5] = "Up"
+table(pred_glm3, Direction.20092010)
+mean(pred_glm3 == Direction.20092010)
+
+fit_lda2 = lda(Direction ~ Lag2:Lag1, data = Weekly, subset = train)
+pred_lda2 = predict(fit_lda2, Weekly.20092010)
+mean(pred_lda2$class == Direction.20092010)
+
+qda_fit = qda(Direction ~ Lag2 + sqrt(abs(Lag2)), data = Weekly, subset = train)
+qda_class = predict(qda_fit, Weekly.20092010)$class
+table(qda_class, Direction.20092010)
+
+knn_pred1 = knn(train_X, test_X, train_Direction, k = 10)
+table(knn_pred1, Direction.20092010)
+
+knn_pred2 = knn(train_X, test_X, train_Direction, k = 100)
+table(knn_pred2, Direction.20092010)
