@@ -1,0 +1,304 @@
+# Link
+#https://www.kaggle.com/uciml/default-of-credit-card-clients-dataset/version/1
+
+# Libraries
+install.packages('leaps')
+install.packages('glmnet')
+install.packages('pls')
+install.packages('MASS')
+install.packages('class')
+install.packages('rda')
+install.packages('randomForest')
+install.packages('gbm')
+install.packages('e1071')
+install.packages('nnet')
+install.packages('neuralnet')
+install.packages('caret')
+install.packages('ROSE')
+install.packages("corrplot")
+library(corrplot)
+library(ROSE)
+library(caret)
+library(neuralnet)
+library(nnet)
+library(e1071)
+library(gbm)
+library(randomForest)
+library(leaps)
+library(glmnet)
+library(pls)
+library(MASS)
+library(class)
+library(rda)
+
+# Create Data frame from csv
+credit.card.df = read.csv('UCI_Credit_Card.csv')
+View(credit.card.df)
+str(credit.card.df)
+summary(credit.card.df)
+
+# Convert variables into factors when needed
+# Regression Doesn't work with this, but keep for later
+credit.card.df$SEX = as.factor(credit.card.df$SEX)
+credit.card.df$EDUCATION = as.factor(credit.card.df$EDUCATION)
+credit.card.df$MARRIAGE = as.factor(credit.card.df$MARRIAGE)
+credit.card.df$PAY_0 = as.factor(credit.card.df$PAY_0)
+credit.card.df$PAY_2 = as.factor(credit.card.df$PAY_2)
+credit.card.df$PAY_3 = as.factor(credit.card.df$PAY_3)
+credit.card.df$PAY_4 = as.factor(credit.card.df$PAY_4)
+credit.card.df$PAY_5 = as.factor(credit.card.df$PAY_5)
+credit.card.df$PAY_6 = as.factor(credit.card.df$PAY_6)
+credit.card.df$default.payment.next.month = as.factor(credit.card.df$default.payment.next.month)
+
+# Change variable name
+credit.card.df$default = credit.card.df$default.payment.next.month
+credit.card.df = credit.card.df[,-25]
+str(credit.card.df)
+
+# Create Test and Training Data Sets
+set.seed(420)
+size = dim(credit.card.df)[1]/2
+tr = sample(1:dim(credit.card.df)[1], size)
+train_id = credit.card.df[tr, ]
+test_id = credit.card.df[-tr, ]
+
+# test & train w/out id
+train = train_id[,-1]
+test = test_id[,-1]
+
+summary(credit.card.df)
+summary(train)
+
+# linear regression
+lm.model = lm(default ~ ., data = train)
+summary(lm.model)
+# make predictions
+pred.lm = predict(lm.model, test)
+binary.pred.lm = ifelse(pred.lm>.5,1,0)
+# confusion matrix
+length(which(test$default==1))
+length(which(test$default==0))
+table( predicted = binary.pred.lm, actual = test$default)
+
+# accuracy = (11536 + 495)/(15000) = 0.8020667
+roc.curve(test$default, binary.pred.lm) #(AUC): 0.562
+mean(binary.pred.lm!=test$default) #0.204
+
+
+# Variable Selection
+back = step(lm.model, direction = 'backward')
+summary(back)
+
+back.pred = predict(back, test)
+back.bin = ifelse(back.pred>.5,1,0)
+summary(back.pred)
+table(predicted = back.bin, actual = test$default)
+
+# accuracy = (11533 + 490)/(15000) = 0.8015333
+roc.curve(test$default, back.bin) #(AUC): 0.562
+mean(back.bin!=test$default) #0.2041333
+
+Start = lm(default~1 , data=train)
+forward = step(Start, direction = "forward", scope = formula(lm.model))
+summary(forward)
+
+for.pred = predict(forward, test)
+summary(for.pred)
+for.bin = ifelse(for.pred>.5,1,0)
+
+table(test$default, for.bin)
+
+# accuracy = (11532 + 488)/(15000) = 0.8013333
+roc.curve(test$default, for.bin) #(AUC): 0.562
+mean(for.bin!=test$default) #0.1986667
+
+# Ridge 
+test_matrix = model.matrix(default~., data=test)
+
+train_matrix = model.matrix(default~., data=train) 
+grid = 10 ^ seq(10, -2, length=100)
+mod_ridge = cv.glmnet(train_matrix, train[, 24], alpha=0, lambda=grid, thresh=1e-12)
+lambda_best_ridge = mod_ridge$lambda.min # 0.01321941
+best_ridge = glmnet(train_matrix, train$default, alpha = 0, lambda = lambda_best_ridge)
+predict(mod_ridge, s=lambda_best_ridge, type="coefficients")
+
+ridge_predict = predict(mod_ridge, newx=test_matrix, s=lambda_best_ridge)
+mean((test[, 24] - ridge_predict)^2) 
+binary.pred.ridge = ifelse(ridge_predict>.5,1,0)
+table(test$default, binary.pred.ridge)
+mean(test$default != binary.pred.ridge) #0.1989333
+
+# accuracy  = (11548+468)/15000 = 0.8010667
+
+#Lasso
+mod_lasso = cv.glmnet(train_matrix, train[, 24], alpha=1, lambda=grid, thresh=1e-12)
+lambda_best_lasso = mod_lasso$lambda.min
+lambda_best_lasso #0.01
+predict(mod_lasso, s=lambda_best_lasso, type="coefficients")
+lasso_predict = predict(mod_lasso, newx=test_matrix, s=lambda_best_lasso)
+mean((test[, 24] - lasso_predict)^2) # MSE = 0.1499003
+binary.pred.lasso = ifelse(lasso_predict>.5,1,0)
+table(test$default, binary.pred.lasso)
+mean(test$default != binary.pred.lasso) #0.2087333
+# accuracy (11631 + 238)/15000 = 0.7912667
+
+# PLS and PCR
+pcr_fit = pcr(default~., data=train, scale=T, validation="CV")
+summary(pcr_fit)
+validationplot(pcr_fit, val.type="MSEP") # Plateaus at 15
+
+pcr_predict = predict(pcr_fit, test, ncomp=15)
+pcr.bin = ifelse(pcr_predict>.5,1,0)
+table(test$default, pcr.bin)
+mean(test$default != pcr.bin)# 0.2054
+# accuracy (11213 +126)/15000 = 0.7559333
+
+pls_fit = plsr(default~., data=train, scale=T, validation="CV")
+summary(pls_fit)
+validationplot(pls_fit, val.type="MSEP") # Plateau's at around 4 components
+
+pls_predict = predict(pls_fit, test, ncomp=4)
+pls.bin = ifelse(pls_predict>.5,1,0)
+table(test$default, pls.bin)
+mean(test$default != pls.bin) #0.2037333
+# accuracy (11191 +135)/15000 = 0.7550667
+
+# LDA
+fit_lda = lda(default ~ ., data = train)
+fit_lda
+pred_lda = predict(fit_lda, test)
+table(predicted = pred_lda$class, actual = test$default)
+mean(test$default != pred_lda$class) #0.1866
+# Accuracy = (11373 + 828)/15000 = 0.8134
+roc.curve(test$default, pred_lda$class) #(AUC): 0.611
+
+
+#qda
+qda_fit = qda(default~., data = train)
+qda.pred = predict(qda_fit, test)
+table(predicted = qda.pred$class, actual = test$default)
+mean(test$default != qda.pred$class) # 0.5346
+
+# accuracy (4289+2755)/15000 = 0.4696
+roc.curve(test$default, qda.pred$class) #(AUC): 0.602
+
+# Logistic
+log.model = glm(default ~ . , family = binomial(link = 'logit'), data = train)
+fit.prob = predict(log.model, test, type = 'response')
+log.pred= ifelse(fit.prob>0.5,1,0)
+table(predicted = log.pred, actual = test$default)
+mean(test$default != log.pred) #0.1882667
+
+# Accuracy = (11402 + 774)/15000 = 0.8117333
+roc.curve(test$default, log.pred) #(AUC): 0.604
+
+
+# KNN 
+#standardize x variables
+var(train[,1])
+var(train[,4])
+strd.train = scale(train[,-24])
+strd.test = scale(test[,-24])
+default.train.std = scale(train[,24]) 
+pred.knn = knn(strd.train, strd.test, train$default, k=1)
+mean(test$default != pred.knn)
+#0.2712
+table(predicted = pred.knn, actual = test$default)
+
+# Accuracy = (9604 + 1328)/15000 = 0.7288
+roc.curve(test$default, pred.knn) #(AUC): 0.612
+
+# Choosing best K
+pred.knn = NULL
+error.rate = NULL
+
+for(i in 1:20){
+  pred.knn1 = knn(strd.train, strd.test, train$default, k=i)
+  error.rate[i] = mean(test$default != pred.knn1)
+}
+error.rate # k=18 is best k
+
+pred.knn.best = knn(strd.train, strd.test, train$default, k=18)
+mean(test$default != pred.knn.best)
+#0.1897333
+table(predicted = pred.knn.best, actual = test$default)
+# accuracy = (11070 + 1084)/15000 = 0.8102667
+roc.curve(test$default, pred.knn.best) #0.637
+
+#Random Forest
+fit.bag<-randomForest(as.factor(default)~., mtry = 10, ntree = 500, data=train,importance=TRUE)
+pred.bag = predict(fit.bag, test)
+mean(test$default != pred.bag)
+# 0.1826667
+table(test$default, pred.bag)
+
+# accuracy = (10992 + 1268)/15000 = 0.8173333
+roc.curve(test$default, pred.bag) #(AUC): 0.662
+
+#################classification example: using bernoulli option#############
+
+bern.fit<-gbm(default~.,data=train, distribution = "bernoulli",n.trees=5000, interaction.depth = 4)  ##may change the depth
+
+bern.pred <-predict(bern.fit,newdata=test,n.trees=5000,type="response")
+
+bern.pred=ifelse(bern.pred>.5,1,0)   
+
+mean(bern.pred!=test$default) #0.1974667
+table(test$default,bern.pred)
+# accuracy = (10774 + 1264)/15000 = 0.8025333
+
+######################################using ada option#################
+ada.fit<-gbm(default~.,data=train,distribution = "adaboost",n.trees=5000, interaction.depth = 4)
+
+ada.pred<-predict(ada.fit,newdata=test,n.trees=5000,type="response")
+
+ada.pred=ifelse(ada.pred>.5,1,0)  
+
+mean(ada.pred!=test$default)
+table(test$default,ada.pred)
+# Not Bad
+
+#################SVM #############
+
+svm.fit<-svm(as.factor(default)~.,data=train,kernel ="linear")
+
+svm.pred<-predict(svm.fit,newdata=test)
+
+mean(svm.pred!=test$default)
+table(test$default,svm.pred)
+# Not Bad
+
+########### Neural Network ##################### 
+xTrans <- preProcess(train, method = c("center", "scale"))
+scaled.train = predict(xTrans, train)
+scaled.test = predict(xTrans, test)
+
+train$default = as.factor(train$default)
+test$default = as.factor(test$default)
+
+TrainingParameters <- trainControl(method = "repeatedcv", number = 10, repeats=10)
+NNModel <- train(train[,-24], train$default, method = "nnet", trControl= TrainingParameters,preProcess=c("scale","center"),na.action = na.omit)
+NNPredictions <-predict(NNModel, test)
+table(predicted = NNPredictions, actual = test$default)
+
+# accuracy = (11063 + 1246)/15000 = 0.8206
+mean(NNPredictions!=test$default) #0.1826667
+roc.curve(test$default, NNPredictions) #(AUC): 0.665
+
+cmNN <-confusionMatrix(NNPredictions, test$default)
+
+fit.nnet=nnet(class.ind(default)~.,data=scaled.train,size=10,softmax=TRUE,decay=0.7)
+pred.nnet=predict(fit.nnet,newdata=scaled.test,type="class")
+binary.nnet = ifelse(pred.nnet>.5,1,0)
+
+mean(binary.nnet!=test$default)
+table(predicted=binary.nnet,true=test$default)
+
+# Correlation Plot
+res <- cor(train[,-24])
+corrplot(res, type = "upper", order = "hclust", 
+         tl.col = "black", tl.srt = 45)
+
+cor(scaled.train)
+
+
