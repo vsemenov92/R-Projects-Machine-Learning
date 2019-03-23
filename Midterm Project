@@ -1,0 +1,353 @@
+#Midterm
+# Libraries
+install.packages('leaps')
+install.packages('glmnet')
+install.packages('pls')
+install.packages('MASS')
+install.packages('class')
+install.packages('rda')
+install.packages('ROSE')
+library(ROSE)
+library(rda)
+library(class)
+library(MASS)
+library(pls)
+library(glmnet)
+library(leaps)
+# Load Data
+train_mid = read.delim('train_mid.txt', header = TRUE, sep = " ")
+test_mid = read.delim('test_mid.txt', header = TRUE, sep = " ")
+
+# Run Multiple Linear Regression
+lm.model = lm(nature ~ ., data = train_mid)
+summary(lm.model)
+length(train_mid)
+lm.model.summary = summary(lm.model)$coeff[,4] > 0.05
+length(lm.model.summary[lm.model.summary==TRUE])
+# Make sure to write which alpha on exam
+# 93 explanatory variables and the intercept are non-significant to the model at 95% level (alpha=0.05)
+lm.model.summary = lm.model.summary[-1]
+lm.model.summary = as.data.frame(lm.model.summary)
+train_mid_drop=train_mid
+
+x = c()
+for (i in 1:122){
+  if (lm.model.summary[i,]==TRUE){
+    x = append(x,i)
+  }
+}
+
+train_mid_drop=train_mid_drop[,-x]
+lm.model.drop = lm(nature ~ ., data = train_mid_drop)
+summary(lm.model.drop) # RSS=.1173; R=.7384; Adj R = .7377; p-value: < 2.2e-16
+summary(lm.model) # RSS = .1173; R=.7409; Adj R = .7377; p-value: < 2.2e-16
+anova(lm.model, lm.model.drop)
+# Pr(>F) > 0.05 the two models are statistically equivalent
+
+# Fit test data into 2 LM models to calculate predictions
+pred.lm = predict(lm.model, test_mid)
+binary.pred.lm = ifelse(pred.lm>.5,1,0)
+
+pred.lm.drop = predict(lm.model.drop, test_mid)
+binary.pred.lm.drop = ifelse(pred.lm.drop>.5,1,0)
+
+# Create Confusion matrix where values above the mean are 1 and values below are 0
+table(test_mid$nature, binary.pred.lm)
+# FN rate = 134/(16+7485) = 0.01786428
+# 134 FN's
+# FP rate = 16/(134+433) = 0.02821869
+# 16 FP's
+# Sensitivity rate = TP/(TP + FN) = 433/(433 + 134) = 0.7636684
+# specificity rate = TN/(FP + TN) = 7485/(7485 + 16) = 0.997867
+table(test_mid$nature, binary.pred.lm.drop)
+# FN rate = FN/Total Negative = 134/(16+7485) = 0.01786428
+# 134 FN's
+# FP rate = FP/Total Positives = 16/(134+433) = 0.02821869
+# 16 FP's
+# Sensitivity rate = TP/(TP + FN) = 433/(433 + 134) = 0.7636684
+# specificity rate = TN/(FP + TN) = 7485/(7485 + 16) = 0.997867
+
+
+# OLD WAY
+backward = step(lm.model, direction = 'backward')
+summary(backward)
+View(backwar)
+length(backward$coefficients)
+
+FitStart = lm(nature~1 , data=train_mid)
+forward = step(FitStart, direction = "forward", scope = formula(lm.model))
+summary(forward)
+View(forward)
+length(forward$coefficients)
+
+pred.fwd = predict(forward, test_mid)
+binary.pred.fwd = ifelse(pred.fwd>.5,1,0)
+# Create Confusion matrix where values above the mean are 1 and values below are 0
+table(test_mid$nature, binary.pred.fwd)
+# FN rate = FN/Total Negative = 134/(16+7485) = 0.01786428
+# 134 FN's
+# FP rate = FP/Total Positives = FP rate = 16/(433+134) = 0.02821869
+# 16 FP's
+# Sensitivity rate = TP/(TP + FN) = 433/(433 + 134) = 0.7636684
+# specificity rate = TN/(FP + TN) = 7485/(7485 + 16) = 0.997867
+
+pred.bwd = predict(backward, test_mid)
+binary.pred.bwd = ifelse(pred.bwd>.5,1,0)
+# Create Confusion matrix where values above the mean are 1 and values below are 0
+table(test_mid$nature, binary.pred.bwd)
+# FN rate = 132/(7485+16) = 0.01759765
+# 132 FN's
+# FP rate = FP/Total Positives = FP rate = 16/(132+435) = 0.02821869
+# 16 FP's
+# Sensitivity rate = TP/(TP + FN) = 435/(435 + 132) = 0.7671958
+# specificity rate = TN/(FP + TN) = 7485/(7485 + 16) = 0.997867
+
+# Ridge and Lasso
+train_matrix = model.matrix(nature~., data=train_mid) 
+grid = 10 ^ seq(10, -2, length=100)
+mod_ridge = cv.glmnet(train_matrix, train_mid[, 123], alpha=0, lambda=grid, thresh=1e-12)
+lambda_best_ridge = mod_ridge$lambda.min #.0231013
+best_ridge = glmnet(train_matrix, train_mid$nature, alpha = 0, lambda = lambda_best_ridge)
+predict(mod_ridge, s=lambda_best_ridge, type="coefficients")
+
+mod_lasso = cv.glmnet(train_matrix, train_mid[, 123], alpha=1, lambda=grid, thresh=1e-12)
+lambda_best_lasso = mod_lasso$lambda.min
+lambda_best_lasso #0.01
+predict(mod_lasso, s=lambda_best_lasso, type="coefficients")
+# all variables except for x8, x44, x62, x63, x203, x207, x209, x213, and x218 were shrunk to zero
+
+test_matrix = model.matrix(nature~., data=test_mid)
+
+ridge_predict = predict(mod_ridge, newx=test_matrix, s=lambda_best_ridge)
+mean((test_mid[, 123] - ridge_predict)^2)
+
+lasso_predict = predict(mod_lasso, newx=test_matrix, s=lambda_best_lasso)
+mean((test_mid[, 123] - lasso_predict)^2)
+
+# Ridge has a slighlty lower test RSS(.017132) compared to lasso's (.018275)
+
+# Ridge Confusion Matrix
+binary.pred.ridge = ifelse(ridge_predict>.5,1,0)
+table(test_mid$nature, binary.pred.ridge)
+# FN rate = FN/Total Negative = 145/7501 = 0.01933076
+# 145 FN's
+# FP rate = FP/Total Positives = 15/567 = 0.02645503
+# 15 FP's
+# Sensitivity rate = TP/(TP + FN) = 422/567 = 0.7442681
+# specificity rate = TN/(FP + TN) = 7486/7501 = 0.9980003
+
+# Lasso Confusion Matrix
+binary.pred.lasso = ifelse(lasso_predict>.5,1,0)
+table(test_mid$nature, binary.pred.lasso)
+# FN rate = FN/Total Negative = 177/7501 = 0.02359685
+# 177 FN's
+# FP rate = FP/Total Positives = FP rate = 15/567 = 0.02645503
+# 15 FP's
+# Sensitivity rate = TP/(TP + FN) = 390/567 = 0.6878307
+# specificity rate = TN/(FP + TN) = 7486/7501 = 0.9980003
+
+# Lasso has much better prediction power as the FP rate decreased a great deal with 
+# the trade-off of a slighlty higher FN rate
+# The specificity rate increased a great deal with a trade off of a slightly lower Sensitivity rate
+
+# PLS and PCR
+pcr_fit = pcr(nature~., data=train_mid, scale=T, validation="CV")
+summary(pcr_fit)
+validationplot(pcr_fit, val.type="MSEP") # Plateau's at around 7 components
+
+pcr_predict = predict(pcr_fit, test_mid, ncomp=7)
+binary.pred.pcr = ifelse(pcr_predict>.5,1,0)
+table(test_mid$nature, binary.pred.pcr)
+# FN rate = FN/Total Negative = 156/(7486+15) = 0.02079723
+# 156 FN's
+# FP rate = FP/Total Positives = FP rate = 15/(156+411) = 0.02645503
+# 15 FP's
+# Sensitivity rate = TP/(TP + FN) = 411/(411 + 156) = 0.7248677
+# specificity rate = TN/(FP + TN) = 7486/(7486 + 15) = 0.9980003
+
+pls_fit = plsr(nature~., data=train_mid, scale=T, validation="CV")
+summary(pls_fit)
+validationplot(pls_fit, val.type="MSEP") # Plateau's at around 3 components
+
+pls_predict = predict(pls_fit, test_mid, ncomp=3)
+binary.pred.pls = ifelse(pls_predict>.5,1,0)
+table(test_mid$nature, binary.pred.pls)
+# FN rate = FN/Total Negative = 136/(7487+14) = 0.01813092
+# 136 FN's
+# FP rate = FP/Total Positives = FP rate = 14/(431+136) = 0.02469136
+# 14 FP's
+# Sensitivity rate = TP/(TP + FN) = 431/(431 + 136) = 0.7601411
+# specificity rate = TN/(FP + TN) = 7487/(7487+14) = 0.9981336
+
+# LDA
+fit_lda = lda(nature ~ ., data = train_mid)
+fit_lda
+pred_lda = predict(fit_lda, test_mid)
+table(pred_lda$class, test_mid$nature)
+table(test_mid$nature, pred_lda$class)
+# FN rate = FN/Total Negative = 105/7501 = 0.01399813
+# 105 FN's
+# FP rate = FP/Total Positives = FP rate = 19/567 = 0.0335097
+# 19 FP's
+# Sensitivity rate = TP/(TP + FN) = 462/567 = 0.960499
+# specificity rate = TN/(FP + TN) = 7482/7501 = 0.9861605
+
+# QDA
+qda(nature~ . , data = train_mid)
+# Error in qda.default(x, grouping, ...) : rank deficiency in group 1
+fit_qda = qda(nature~ x1 +x2 +x3 +x4 +x5 +x6 +x7 +x8 +x9 + x10 +x11 +x12+x13 +x14 +x15 +x16 +x17 +x18 +x19 + x42 +x43 +x44 +x45 +x46 +x47 +x48 +x49 + x50 +x51 +x52 +x53 +x54 +x55 +x56 +x57 +x58 +x59 + x60 +x61 +x62 +x63 +x64 +x65 +x66 +x67 +x68 +x69 + x70 +x71 +x72 +x73 +x74 +x75 +x76 +x77 +x78 +x79
+              + x80 +x81 +x82 +x83 +x84 +x85 +x86 +x87 +x88 +x89 + x90 +x91 +x92 +x93 +x94 +x95 +x96 +x97 +x98 +x99 + x100+ x101 +x102 +x103 +x104 +x105 +x106 +x107 +x108 +x109 + x110 + x111 +x112 +x113 +x114 +x115 +x116 +x117 +x118 +x119 + x120 + x121 + x122 + x123 + x124
+              +x201 + x202 + x203 +x204 + x205 +x207 +x208 +x209 +x210 +x211 +x212 +x213 +x214 +x215 +x216 +x217 + x218 +x219 +x220, data = train_mid) # Error doesn't work
+#x206 ruins QDA function
+fit_qda = qda(nature~., data = train_mid[,-108])
+length(test_mid[,-108])
+pred_qda = predict(fit_qda, test_mid[,-108])
+table(test_mid$nature, pred_qda$class) 
+#both fits give exactly same confusion matrix
+# FN rate = FN/Total Negative = 9/7501 = 0.00119984
+# 9 FN's
+# FP rate = FP/Total Positives = FP rate = 3841/567 = 6.77425
+# 3841 FP's
+# Sensitivity rate = TP/(TP + FN) = 558/567 =  0.984127
+# specificity rate = TN/(FP + TN) = 3660/7501 = 0.4879349
+
+#RDA
+rda.fit=rda(t(train_mid[,1:122]),train_mid$nature)
+rda.fit[["error"]]
+#rda.prd=predict(rda.fit,x=t(train_mid[,1:122]),y=train_mid$nature,xnew=t(test_mid[,1:122]),alpha=0.55,delta=2)
+#table(test_mid$nature, rda.prd)
+rda.prd1=predict(rda.fit,x=t(train_mid[,1:122]),y=train_mid$nature,xnew=t(test_mid[,1:122]),alpha=0.22,delta=0)
+table(test_mid$nature, rda.prd1)
+# FN rate = FN/Total Negative = 98/(7501) = 0.01306492
+# 98 FN's
+# FP rate = FP/Total Positives = FP rate = 475/(567) = 0.8377425
+# 475 FP's
+# Sensitivity rate = TP/(TP + FN) = 469/(567) =  0.8271605
+# specificity rate = TN/(FP + TN) = 7026/(7501) = 0.9366751
+
+# Logistic
+log.model = glm(nature ~ . , family = binomial(link = 'logit'), data = train_mid)
+fitted.probabilities = predict(log.model, test_mid, type = 'response')
+fitted.results = ifelse(fitted.probabilities>0.5,1,0)
+table(test_mid$nature, fitted.results)
+# FN rate = FN/Total Negative = 38/(7480+21) = 0.005065991
+# 38 FN's
+# FP rate = FP/Total Positives = FP rate = 21/(529+38) = 0.03703704
+# 21 FP's
+# Sensitivity rate = TP/(TP + FN) = 529/(529 + 38) =  0.9329806
+# specificity rate = TN/(FP + TN) = 7480/(7480 + 21) = 0.9972004
+
+# KNN
+#standardize x variables
+var(train_mid[,1])
+var(train_mid[,122])
+strd.train.mid = scale(train_mid[,-123])
+strd.test.mid = scale(test_mid[,-123])
+nature.train.std = scale(train_mid[,123]) 
+pred.knn = knn(strd.train.mid, strd.test.mid, train_mid$nature, k=1)
+pred.knn1 = pred.knn
+mean(test_mid$nature!= pred.knn1)
+
+
+# Choosing best K
+pred.knn = NULL
+error.rate = NULL
+
+for(i in 1:20){
+  pred.knn = knn(strd.train.mid, strd.test.mid, train_mid$nature, k=i)
+  error.rate[i] = mean(test_mid$nature != pred.knn)
+}
+error.rate # k=1 has lowest error
+final.pred.knn = knn(strd.train.mid, strd.test.mid, train_mid$nature, k=1)
+mean(test_mid$nature != final.pred.knn)
+table(test_mid$nature, final.pred.knn)
+# FN rate = FN/Total Negative = 138/(7493+8) = 0.01839755
+# 138 FN's
+# FP rate = FP/Total Positives = FP rate = 8/(429+138) = 0.01410935
+# 8 FP's
+# Sensitivity rate = TP/(TP + FN) = 429/(429 + 138) =  0.7566138
+# specificity rate = TN/(FP + TN) = 7493/(7493 + 8) = 0.9989335
+
+# Without Standardizing
+unstd.pred.knn = knn(train_mid, test_mid, train_mid$nature, k=1)
+mean(test_mid$nature!= unstd.pred.knn)
+table(test_mid$nature, unstd.pred.knn)
+# FN rate = FN/Total Negative = 384/7501 = 0.05119317
+# 384 FN's
+# FP rate = FP/Total Positives = FP rate = 112/567 = 0.1975309
+# 112 FP's
+# Sensitivity rate = TP/(TP + FN) = 183/567 =  0.3227513
+# specificity rate = TN/(FP + TN) = 7389/7501 = 0.9850687
+
+# Choosing best K
+pred.knn.unst = NULL
+error.rate.unst = NULL
+
+for(n in 1:20){
+  pred.knn.unst = knn(train_mid, test_mid, train_mid$nature, k=n)
+  error.rate.unst[i] = mean(test_mid$nature != pred.knn.unst)
+}
+error.rate.unst #null values
+
+# ROC
+par(mfrow = c(1, 2))
+
+# MULTIPLE LINEAR REGRESSION
+roc.curve(test_mid$nature, binary.pred.lm) #AUC=.881
+
+# MULTIPLE LINEAR REGRESSION W/ DROPPED VARIABLES
+roc.curve(test_mid$nature, binary.pred.lm.drop)#AUC=.881
+
+# FORWARD SELECTION ROC
+roc.curve(test_mid$nature, binary.pred.fwd)#AUC=.881
+
+# BACKWARD SELECTION ROC
+roc.curve(test_mid$nature, binary.pred.bwd)#AUC=.883
+
+#RIDGE ROC
+roc.curve(test_mid$nature, binary.pred.ridge)#AUC=.871
+
+#LASSO ROC
+roc.curve(test_mid$nature, binary.pred.lasso)#AUC=.843
+
+# PCR ROC
+roc.curve(test_mid$nature, binary.pred.pcr)#AUC=.861
+
+# PLS ROC
+roc.curve(test_mid$nature, binary.pred.pls)#AUC=.879
+par(mfrow = c(1, 3))
+#LDA ROC
+roc.curve(test_mid$nature, pred_lda$class)#AUC=.906
+
+#QDA ROC
+roc.curve(test_mid$nature, pred_qda$class)#AUC=.736
+
+# RDA ROC
+roc.curve(test_mid$nature, rda.prd1)#AUC=0.882
+par(mfrow = c(1, 2))
+# Logistic ROC
+roc.curve(test_mid$nature, fitted.results)#AUC=.965
+
+# KNN ROC
+roc.curve(test_mid$nature, final.pred.knn)#AUC=.878
+
+par(mfrow = c(1, 1))
+
+AUC = c(0.881,0.881,0.881,0.883,0.871,0.843,0.861, 0.879,0.906,0.736,0.882,0.965,0.878)
+Fitted_Model = c('Multiple Linear Regression','Multiple Linear Regression w/ dropped variables', 
+          'Forward Selection', 'Backward Selection', 'Ridge', 'Lasso', 
+          'PCR','PLS', 'LDA','QDA','RDA','Logistic Regression', "KNN")
+
+AUC.matrix = matrix(AUC, ncol=1)
+rownames(AUC.matrix) = Fitted_Model
+colnames(AUC.matrix) = "AUC"
+AUC.matrix
+# if FN rate is <0.01 change the threshold from 0.5 to a value less than 0.01
+# Example using logistic regression
+FN.fitted.results = ifelse(fitted.probabilities>0.01,1,0)
+table(test_mid$nature, FN.fitted.results ) 
+# Original Confusion matrix
+table(test_mid$nature, fitted.results)
+# Gave exact same confusion matrix
+
+
